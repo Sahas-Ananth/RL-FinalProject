@@ -28,7 +28,7 @@ def run(run):
         tau=0.001,
         env=env,
         batch_size=64,
-        layer1_size=400,  # TODO: Dynamically set layer sizes.
+        layer1_size=400, 
         layer2_size=300,
         n_actions=env.action_space.shape[0],
         gamma=0.99,
@@ -38,7 +38,7 @@ def run(run):
         noise=0.1,
     )
     score_history, actor_loss, critic_loss = [], [], []
-    for i in range(1400):
+    for i in range(2500):
         obs = env.reset()
         obs = np.concatenate([obs["observation"], obs["desired_goal"]])
         done = False
@@ -53,11 +53,11 @@ def run(run):
             agent.learn()
             score += reward
             obs = new_state
-            
+
         actor_loss.append(agent.actor_loss)
         critic_loss.append(agent.critic_loss)
         score_history.append(score)
-        
+
         os.makedirs(f"{cwd}/../Data/{EXP_NAME}/Run_{run}/", exist_ok=True)
         if i % 500 == 0:
             print(
@@ -98,17 +98,10 @@ def run(run):
 def TD3_main():
     global EXP_NAME, TASK, REWARD
     EXP_NAME = input("Enter experiment name: ")
-    task_list = ["Reach", "Push", "PickAndPlace", "Slide", "Stack"]
-    TASK = task_list[
-        int(
-            input(
-                f"Enter task number {task_list}. Enter a number from 0 to {len(task_list) - 1}: "
-            )
-        )
-    ]
 
-    reward_list = ["Dense", ""]
-    REWARD = reward_list[int(input("Enter reward type (Dense = 0; Sparse = 1): "))]
+    TASK = "Reach"
+
+    REWARD = "Dense"
 
     NoRuns = int(input("Enter number of runs: "))
     rList = np.arange(NoRuns, dtype=int).tolist()

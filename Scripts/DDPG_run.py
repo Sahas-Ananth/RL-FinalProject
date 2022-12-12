@@ -24,13 +24,13 @@ def run(run):
         beta=0.001,
         input_dims=[obs_dim],
         tau=0.001,
-        batch_size=64,
+        batch_size=100,
         layer1_size=400,
         layer2_size=300,
         n_actions=env.action_space.shape[0],
     )
     score_history, actor_loss, critic_loss = [], [], []
-    for i in range(1400):
+    for i in range(2500):
         observation = env.reset()
         observation = np.concatenate(
             [observation["observation"], observation["desired_goal"]]

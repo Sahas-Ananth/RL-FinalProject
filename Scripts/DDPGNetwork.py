@@ -43,7 +43,7 @@ class ReplayBuffer(object):
         self.new_state_memory = np.zeros((self.mem_size, *input_shape))
         self.action_memory = np.zeros((self.mem_size, n_actions))
         self.reward_memory = np.zeros(self.mem_size)
-        self.terminal_memory = np.zeros(self.mem_size, dtype=np.bool)
+        self.terminal_memory = np.zeros(self.mem_size, dtype=bool)
 
     def store_transition(self, state, action, reward, state_, done):
         index = self.mem_cntr % self.mem_size
@@ -51,8 +51,8 @@ class ReplayBuffer(object):
         self.new_state_memory[index] = state_
         self.action_memory[index] = action
         self.reward_memory[index] = reward
-        # self.terminal_memory[index] = 1 - done
-        self.terminal_memory[index] = done
+        self.terminal_memory[index] = 1 - done
+        # self.terminal_memory[index] = done
         self.mem_cntr += 1
 
     def sample_buffer(self, batch_size):
@@ -93,7 +93,6 @@ class CriticNetwork(nn.Module):
         f1 = 1.0 / np.sqrt(self.fc1.weight.data.size()[0])
         T.nn.init.uniform_(self.fc1.weight.data, -f1, f1).to(self.device)
         T.nn.init.uniform_(self.fc1.bias.data, -f1, f1).to(self.device)
-
         self.bn1 = nn.LayerNorm(self.fc1_dims).to(self.device)
 
         self.fc2 = nn.Linear(self.fc1_dims, self.fc2_dims).to(self.device)
@@ -103,6 +102,8 @@ class CriticNetwork(nn.Module):
         T.nn.init.uniform_(self.fc2.bias.data, -f2, f2).to(self.device)
 
         self.bn2 = nn.LayerNorm(self.fc2_dims).to(self.device)
+        # self.bn1 = nn.BatchNorm1d(self.fc1_dims).to(self.device)
+        # self.bn2 = nn.BatchNorm1d(self.fc2_dims).to(self.device)
 
         self.action_value = nn.Linear(self.n_actions, self.fc2_dims).to(self.device)
         f4 = 0.003
@@ -161,8 +162,6 @@ class ActorNetwork(nn.Module):
         f1 = 1.0 / np.sqrt(self.fc1.weight.data.size()[0])
         T.nn.init.uniform_(self.fc1.weight.data, -f1, f1).to(self.device)
         T.nn.init.uniform_(self.fc1.bias.data, -f1, f1).to(self.device)
-        # self.fc1.weight.data.uniform_(-f1, f1)
-        # self.fc1.bias.data.uniform_(-f1, f1)
         self.bn1 = nn.LayerNorm(self.fc1_dims).to(self.device)
 
         self.fc2 = nn.Linear(self.fc1_dims, self.fc2_dims).to(self.device)
@@ -170,17 +169,12 @@ class ActorNetwork(nn.Module):
         f2 = 1.0 / np.sqrt(self.fc2.weight.data.size()[0])
         T.nn.init.uniform_(self.fc2.weight.data, -f2, f2).to(self.device)
         T.nn.init.uniform_(self.fc2.bias.data, -f2, f2).to(self.device)
-        # self.fc2.weight.data.uniform_(-f2, f2)
-        # self.fc2.bias.data.uniform_(-f2, f2)
         self.bn2 = nn.LayerNorm(self.fc2_dims).to(self.device)
 
-        # f3 = 0.004
         f4 = 0.003
         self.mu = nn.Linear(self.fc2_dims, self.n_actions).to(self.device)
         T.nn.init.uniform_(self.mu.weight.data, -f4, f4).to(self.device)
         T.nn.init.uniform_(self.mu.bias.data, -f4, f4).to(self.device)
-        # self.mu.weight.data.uniform_(-f3, f3)
-        # self.mu.bias.data.uniform_(-f3, f3)
 
         self.optimizer = optim.Adam(self.parameters(), lr=alpha)
         self.to(self.device)
@@ -223,6 +217,7 @@ class Agent(object):
         self.tau = tau
         self.memory = ReplayBuffer(max_size, input_dims, n_actions)
         self.batch_size = batch_size
+        self.noise = OUActionNoise(mu=np.zeros(n_actions))
 
         self.actor = ActorNetwork(
             alpha,
@@ -258,9 +253,8 @@ class Agent(object):
             name="TargetCritic",
         )
 
-        self.noise = OUActionNoise(mu=np.zeros(n_actions))
         self.actor_loss, self.critic_loss = [], []
-        self.update_network_parameters(tau=self.tau)
+        self.update_network_parameters(tau=1)
 
     def choose_action(self, observation):
         self.actor.eval()
@@ -296,6 +290,7 @@ class Agent(object):
         target = []
         for j in range(self.batch_size):
             target.append(reward[j] + self.gamma * critic_value_[j] * int(done[j]))
+
         target = T.tensor(target).to(self.critic.device)
         target = target.view(self.batch_size, 1)
 
@@ -329,13 +324,13 @@ class Agent(object):
 
         critic_state_dict = dict(critic_params)
         actor_state_dict = dict(actor_params)
-        target_critic_dict = dict(target_critic_params)
-        target_actor_dict = dict(target_actor_params)
+        target_critic_state_dict = dict(target_critic_params)
+        target_actor_state_dict = dict(target_actor_params)
 
         for name in critic_state_dict:
             critic_state_dict[name] = (
                 tau * critic_state_dict[name].clone()
-                + (1 - tau) * target_critic_dict[name].clone()
+                + (1 - tau) * target_critic_state_dict[name].clone()
             )
 
         self.target_critic.load_state_dict(critic_state_dict)
@@ -343,8 +338,9 @@ class Agent(object):
         for name in actor_state_dict:
             actor_state_dict[name] = (
                 tau * actor_state_dict[name].clone()
-                + (1 - tau) * target_actor_dict[name].clone()
+                + (1 - tau) * target_actor_state_dict[name].clone()
             )
+
         self.target_actor.load_state_dict(actor_state_dict)
 
     def save_models(self):
